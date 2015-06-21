@@ -7,6 +7,10 @@
 //bug where some craft, mainly heavy ones, crash even with the safety
 //I think this is due to the constant acceleration approximation used
 
+//runs required functions
+run gravity_calculator. //gravity calculation function
+run suicide_burn_calculator. //suicide burn calculation function
+
 //set to known state
 clearscreen.
 SAS off.
@@ -23,33 +27,18 @@ set runmode to 1.
 set thrust to ship:maxthrust.
 set counter to 0. //for checking if landed
 
-//gravity calculation function
-function gravity_calculator {
-	declare local GM to ship:body:mu.
-	declare local R to ship:body:radius. 
-	declare local g to GM/(R^2).
-	return -g.
-}.
+//find ship parameters
+lock h to alt:radar.
+lock vd to ship:verticalspeed.
+lock vDiff to (vLand - vd).
 
-//suicide burn calculation function
-function suicide_burn_calculator {
-	declare local shipmass to ship:mass.
-	declare local vd to ship:verticalspeed.
-	declare local va to ((thrust/shipmass) + gravity_calculator()).
-	declare local A to (vd^2)/(2*va).
-	return 1.1 * A. //adds a 10% margin for error
-}.
+//calculates values for landing
+lock TimeToBurn to ((suicide_burn_calculator(1.1)-h)/vd).
+lock ZeroAccelThrust to ((ship:mass*g)/thrust).
 
 //loops until landed
 until runmode = 0 {
-	//find ship parameters
-	set h to alt:radar.
 	set g to -gravity_calculator().
-	set vd to ship:verticalspeed.
-
-	//calculates values for landing
-	set TimeToBurn to ((suicide_burn_calculator()-h)/vd).
-	set ZeroAccelThrust to ((ship:mass*g)/thrust).
 	
 	//initial setup for high atmosphere
 	if runmode = 1 {
@@ -64,10 +53,9 @@ until runmode = 0 {
 		}
 	}
 	
-	//suicide burn start  with additional 10% error and velocity consideration
-	//because it takes time for maximum thrust to be reached
+	//suicide burn start
 	if runmode = 2 {
-		if h < 1.1*(suicide_burn_calculator() - vd) {
+		if h < (suicide_burn_calculator(1.1) - vd) {
 			set TVAL to 1.
 			RCS on.
 		}
@@ -86,7 +74,6 @@ until runmode = 0 {
 	
 	//suicide burn final approcach
 	if runmode = 3 {
-		set vDiff to (vLand - vd).
 		if vDiff > 0 {
 			set TVAL to (ZeroAccelThrust + 0.1).
 		}
@@ -95,25 +82,27 @@ until runmode = 0 {
 		}
 		if vd > -0.1 and h < 100 {
 			set counter to counter + 1.
+			wait 0.1.
 		}
-		if counter > 5 {
-			set runmode to 0.
+		if counter > 20 {
+			set runmode to 0. //if landed for 2 seconds then exits
 		}
-		wait 0.1.
 	}
 	
 	lock throttle to TVAL.
 
 	//parameters to display
-	print "Vertical velocity:			" + vd + "			" at (5,4).
-	print "Required burn height:			" + suicide_burn_calculator + "			" at (5,5).
-	print "Time to required burn:			" + TimeToBurn + "			" at (5,6).
+	print "Vertical velocity:			" + round(vd, 2) + "			" at (5,4).
+	print "Required burn height:			" + round(suicide_burn_calculator(1.1), 2) + "			" at (5,5).
+	print "Time to required burn:			" + round(TimeToBurn, 2) + "			" at (5,6).
 	print "Run mode:			" + runmode + "			" at (5,7).
+	print "Gravitational acceleration:			" + round(g, 2) + "			" at (5,8).
 }
 
 //landing notification and program exit
 if runmode = 0 {
-	set TVAL to 0.
+	set TVAL to 0. //sometimes throttle was left on so I added this
+	unlock throttle. //sometimes throttle was left on so I added this
 	clearscreen.
 	print "Landing Complete" at (5,4).
 	wait 1. //wait to make sure throttle is set to 0
